@@ -1,11 +1,11 @@
 # 03_bayes_parameters.R
-# Modelo bayesiano final — sem parcela permanente
-# Extrai: componentes de variância, H², acurácia, correlação genotípica entre
-# anos, e BLUPs por genótipo e por genótipo:ano
+# Final Bayesian model — without permanent plot
+# Extracts: variance components, H², accuracy, genotypic correlation between
+# years, and BLUPs by genotype and by genotype:year
 #
-# Modelo: y ~ ano + block + (1|genotipo) + (1|genotipo:ano)
+# Model: y ~ ano + block + (1|genotipo) + (1|genotipo:ano)
 #
-# Saídas:
+# Outputs:
 #   outputs/tables/03_varcomp.xlsx
 #   outputs/tables/03_parametros_geneticos.xlsx
 #   outputs/tables/03_blups_genotipo.xlsx
@@ -13,8 +13,10 @@
 #   outputs/figures/03_trace_*.png
 #   outputs/figures/03_ppcheck_*.png
 #   data/modelos_finais.rds
+# Part of: Gonçalves Júnior et al. (2026), Biology (MDPI)
+# Repository: https://github.com/juniorherenio/canephora-processing-efficiency
 
-# ── pacotes ────────────────────────────────────────────────────────────────────
+# ── packages ────────────────────────────────────────────────────────────────────
 library(dplyr)
 library(tidyr)
 library(purrr)
@@ -25,7 +27,7 @@ library(ggplot2)
 library(patchwork)
 library(writexl)
 
-# ── dados e paths ──────────────────────────────────────────────────────────────
+# ── data and paths ──────────────────────────────────────────────────────────────
 dados <- readRDS("data/dados_clean.rds")
 
 path_fig <- "outputs/figures/"
@@ -34,9 +36,7 @@ path_tbl <- "outputs/tables/"
 vars_resp <- c("per_grao", "per_palha", "mcm_mgb",
                "mcm_saca", "vcm_saca", "vcm_mcm")
 
-# vars_resp <- "per_grao"
-
-# ── configurações MCMC ─────────────────────────────────────────────────────────
+# ── MCMC settings ─────────────────────────────────────────────────────────
 options(mc.cores = 12)
 bayesplot::color_scheme_set("blue")
 
@@ -46,7 +46,7 @@ n_chains <- 4
 n_cores  <- 12
 adapt_d  <- 0.95
 
-# ── modelo final — sem parcela permanente ──────────────────────────────────────
+# ── final model — without permanent plot ──────────────────────────────────────
 formula_final <- bf(
   y_z ~ ano + block + (1 | genotipo) + (1 | genotipo:ano)
 )
@@ -58,7 +58,7 @@ priors_final <- c(
   prior(normal(0, 5),         class = b)
 )
 
-# ── funções auxiliares ─────────────────────────────────────────────────────────
+# ── auxiliary functions ─────────────────────────────────────────────────────────
 
 padronizar <- function(x) {
   mu <- mean(x, na.rm = TRUE)
@@ -66,44 +66,44 @@ padronizar <- function(x) {
   list(z = (x - mu) / sg, media = mu, dp = sg)
 }
 
-# extrai componentes de variância e parâmetros genéticos da posterior
+# extracts variance components and genetic parameters from the posterior
 extrair_parametros <- function(modelo, var_nome, media_orig, dp_orig, n_anos = 2, n_blocos = 3) {
   
-  # amostras posteriores dos desvios padrão
+  # posterior samples of standard deviations
   post <- as_draws_df(modelo)
   
-  # identificar colunas sd
+  # identify sd columns
   sd_G   <- post[[ grep("^sd_genotipo__Intercept$",
-                        names(post), value = TRUE) ]]
+                         names(post), value = TRUE) ]]
   sd_GxA <- post[[ grep("sd_genotipo:ano__Intercept",
-                        names(post), value = TRUE) ]]
+                         names(post), value = TRUE) ]]
   sd_e   <- post[["sigma"]]
   
-  # variâncias
+  # variances
   var_G   <- sd_G^2
   var_GxA <- sd_GxA^2
   var_e   <- sd_e^2
   var_P   <- var_G + var_GxA / n_anos + var_e / (n_anos * n_blocos)
   
-  # herdabilidade no sentido amplo (base da média)
+  # broad-sense heritability (mean basis)
   H2 <- var_G / var_P
   
-  # acurácia seletiva
+  # selective accuracy
   acuracia <- sqrt(H2)
   
-  # correlação genotípica entre anos
+  # genotypic correlation between years
   # rGA = σ²G / (σ²G + σ²GxA)
-  # mede quanto do ranking genotípico se preserva entre anos
+  # measures how much of the genotypic ranking is preserved between years
   rGA <- var_G / (var_G + var_GxA)
   
-  # razão CVg/CVe (escala original)
+  # CVg/CVe ratio (original scale)
   CVg <- (sqrt(var_G)  * dp_orig) / media_orig * 100
   CVe <- (sd_e         * dp_orig) / media_orig * 100
   razao_CVg_CVe <- CVg / CVe
   
   tibble(
     variavel        = var_nome,
-    # componentes — mediana e IC 95% — escala original
+    # components — median and 95% CI — original scale
     sigma2_G_med    = median(var_G)   * dp_orig^2,
     sigma2_G_q025   = quantile(var_G, 0.025) * dp_orig^2,
     sigma2_G_q975   = quantile(var_G, 0.975) * dp_orig^2,
@@ -113,7 +113,7 @@ extrair_parametros <- function(modelo, var_nome, media_orig, dp_orig, n_anos = 2
     sigma2_e_med    = median(var_e)   * dp_orig^2,
     sigma2_e_q025   = quantile(var_e, 0.025) * dp_orig^2,
     sigma2_e_q975   = quantile(var_e, 0.975) * dp_orig^2,
-    # parâmetros genéticos — adimensionais
+    # genetic parameters — dimensionless
     H2_med          = median(H2),
     H2_q025         = quantile(H2, 0.025),
     H2_q975         = quantile(H2, 0.975),
@@ -129,7 +129,7 @@ extrair_parametros <- function(modelo, var_nome, media_orig, dp_orig, n_anos = 2
   )
 }
 
-# extrai BLUPs de genótipo (efeito médio entre anos)
+# extracts genotype BLUPs (mean effect between years)
 extrair_blups_G <- function(modelo, var_nome, media_orig, dp_orig) {
   re   <- as_draws_df(modelo)
   cols <- grep("^r_genotipo\\[", names(re), value = TRUE)
@@ -151,7 +151,7 @@ extrair_blups_G <- function(modelo, var_nome, media_orig, dp_orig) {
   })
 }
 
-# extrai BLUPs de genótipo:ano (desvio de cada genótipo em cada ano)
+# extracts genotype:year BLUPs (deviation of each genotype in each year)
 extrair_blups_GxA <- function(modelo, var_nome) {
   re   <- as_draws_df(modelo)
   cols <- grep("^r_genotipo:ano\\[", names(re), value = TRUE)
@@ -169,13 +169,13 @@ extrair_blups_GxA <- function(modelo, var_nome) {
       blup_gxa_med   = median(samples),
       blup_gxa_q025  = quantile(samples, 0.025),
       blup_gxa_q975  = quantile(samples, 0.975),
-      var_gxa        = var(samples)   # variância posterior — medida de instabilidade
+      var_gxa        = var(samples)   # posterior variance — measure of instability
     )
   })
 }
 
-# ── loop principal ─────────────────────────────────────────────────────────────
-cat("\n── Modelos finais — início ──\n\n")
+# ── main loop ─────────────────────────────────────────────────────────────
+cat("\n── Final models — start ──\n\n")
 
 lista_modelos    <- list()
 lista_parametros <- list()
@@ -185,48 +185,48 @@ lista_blups_GxA  <- list()
 for (v in vars_resp) {
   
   cat("══════════════════════════════════\n")
-  cat("Variável:", v, "\n")
+  cat("Variable:", v, "\n")
   
   pad       <- padronizar(dados[[v]])
   dados$y_z <- pad$z
   
-  # ── ajuste
-  cat("  Ajustando modelo final...\n")
+  # ── fit
+  cat("  Fitting final model...\n")
   m <- brm(
     formula_final,
-    data      = dados,
-    prior     = priors_final,
-    chains    = n_chains,
-    iter      = n_iter,
-    warmup    = n_warmup,
-    cores     = n_cores,
-    seed      = 42,
+    data    = dados,
+    prior   = priors_final,
+    chains  = n_chains,
+    iter    = n_iter,
+    warmup  = n_warmup,
+    cores   = n_cores,
+    seed    = 42,
     save_pars = save_pars(all = TRUE),
     control   = list(adapt_delta = adapt_d, max_treedepth = 12),
     silent    = 2,
     refresh   = 100
   )
   
-  # ── divergências
+  # ── divergences
   nuts  <- nuts_params(m)
   n_div <- sum(nuts$Value[nuts$Parameter == "divergent__"])
-  cat("  Divergências:", n_div, "\n")
+  cat("  Divergences:", n_div, "\n")
   
   if (n_div > 10) {
-    cat("  Reajustando com adapt_delta = 0.99...\n")
+    cat("  Refitting with adapt_delta = 0.99...\n")
     m <- update(m,
                 control   = list(adapt_delta = 0.99, max_treedepth = 15),
                 save_pars = save_pars(all = TRUE),
                 silent    = 2, refresh = 100)
     nuts  <- nuts_params(m)
     n_div <- sum(nuts$Value[nuts$Parameter == "divergent__"])
-    cat("  Divergências após reajuste:", n_div, "\n")
+    cat("  Divergences after refit:", n_div, "\n")
   }
   
-  # ── diagnóstico visual
+  # ── visual diagnostic
   p_trace <- mcmc_trace(
     as.array(m),
-    pars       = grep("^sd_", variables(m), value = TRUE),
+    pars         = grep("^sd_", variables(m), value = TRUE),
     facet_args = list(ncol = 2)
   ) +
     labs(title = paste0("Trace plots — ", v)) +
@@ -242,25 +242,25 @@ for (v in vars_resp) {
   ggsave(paste0(path_fig, "03_ppcheck_", v, ".png"),
          p_ppc, width = 8, height = 5, dpi = 300)
   
-  # ── extração
-  cat("  Extraindo parâmetros e BLUPs...\n")
+  # ── extraction
+  cat("  Extracting parameters and BLUPs...\n")
   lista_parametros[[v]] <- extrair_parametros(m, v, pad$media, pad$dp)
   lista_blups_G[[v]]    <- extrair_blups_G(m, v, pad$media, pad$dp)
   lista_blups_GxA[[v]]  <- extrair_blups_GxA(m, v)
   
   lista_modelos[[v]] <- list(modelo = m, media_orig = pad$media, dp_orig = pad$dp)
   
-  cat("  Concluído:", v, "\n\n")
+  cat("  Finished:", v, "\n\n")
 }
 
-# ── consolidar e salvar ────────────────────────────────────────────────────────
-cat("── Salvando resultados...\n")
+# ── consolidate and save ────────────────────────────────────────────────────────
+cat("── Saving results...\n")
 
 params_final  <- list_rbind(lista_parametros)
 blups_G_final <- list_rbind(lista_blups_G)
 blups_GxA_final <- list_rbind(lista_blups_GxA)
 
-# adicionar grupo ao blups
+# add group to blups
 grupo_ref <- dados |>
   distinct(genotipo, grupo) |>
   mutate(genotipo = as.character(genotipo))
@@ -271,7 +271,7 @@ blups_G_final <- blups_G_final |>
 blups_GxA_final <- blups_GxA_final |>
   left_join(grupo_ref, by = "genotipo")
 
-# salvar em xlsx
+# save to xlsx
 write_xlsx(
   list(
     parametros_geneticos = params_final,
@@ -283,5 +283,5 @@ write_xlsx(
 
 saveRDS(lista_modelos, "data/modelos_finais.rds")
 
-cat("\nConcluído. Modelos salvos em data/modelos_finais.rds\n")
-cat("Variáveis processadas:", length(lista_modelos), "\n")
+cat("\nFinished. Models saved in data/modelos_finais.rds\n")
+cat("Variables processed:", length(lista_modelos), "\n")
