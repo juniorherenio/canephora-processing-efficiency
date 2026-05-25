@@ -1,20 +1,22 @@
 # 03b_reml_comparison.R
-# Comparação entre estimativas de componentes de variância e parâmetros
-# genéticos via REML (lme4) e via Inferência Bayesiana (brms)
+# Comparison between variance component estimates and genetic parameters 
+# via REML (lme4) and Bayesian Inference (brms)
 #
-# Objetivo: demonstrar que REML produz estimativas de fronteira (boundary)
-# para várias variáveis e subestima a incerteza dos parâmetros, justificando
-# o uso da abordagem bayesiana
+# Objective: demonstrate that REML produces boundary estimates for several 
+# variables and underestimates parameter uncertainty, justifying the use 
+# of the Bayesian approach
 #
-# Modelo: y ~ ano + block + (1|genotipo) + (1|genotipo:ano)
+# Model: y ~ ano + block + (1|genotipo) + (1|genotipo:ano)
 #
-# Saídas:
+# Outputs:
 #   outputs/tables/03b_reml_vs_bayes.xlsx
 #   outputs/figures/03b_comparacao_h2.png
 #   outputs/figures/03b_comparacao_rga.png
 #   outputs/figures/03b_varcomp_reml_vs_bayes.png
+# Part of: Gonçalves Júnior et al. (2026), Biology (MDPI)
+# Repository: https://github.com/juniorherenio/canephora-processing-efficiency
 
-# ── pacotes ────────────────────────────────────────────────────────────────────
+# ── packages ────────────────────────────────────────────────────────────────────
 library(dplyr)
 library(tidyr)
 library(purrr)
@@ -24,11 +26,11 @@ library(ggplot2)
 library(patchwork)
 library(writexl)
 
-# ── dados e paths ──────────────────────────────────────────────────────────────
+# ── data and paths ──────────────────────────────────────────────────────────────
 dados        <- readRDS("data/dados_clean.rds")
 bayes_params <- readRDS("data/modelos_finais.rds")
 
-# carregar tabela de parâmetros bayesianos já calculada
+# load already calculated Bayesian parameters table
 params_bayes <- readxl::read_xlsx(
   "outputs/tables/03_resultados_bayesianos.xlsx",
   sheet = "parametros_geneticos"
@@ -43,12 +45,12 @@ vars_resp <- c("per_grao", "per_palha", "mcm_mgb",
 n_anos   <- 2
 n_blocos <- 3
 
-# ── controle do otimizador ─────────────────────────────────────────────────────
+# ── optimizer control ─────────────────────────────────────────────────────
 ctrl <- lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
 
-# ── funções auxiliares ─────────────────────────────────────────────────────────
+# ── auxiliary functions ─────────────────────────────────────────────────────────
 
-# extrai componentes de variância do lmer e calcula parâmetros genéticos
+# extracts variance components from lmer and calculates genetic parameters
 extrair_reml <- function(var, data) {
   
   f <- as.formula(
@@ -71,29 +73,29 @@ extrair_reml <- function(var, data) {
                   singular = NA, boundary = NA))
   }
   
-  vc       <- as.data.frame(VarCorr(m))
+  vc     <- as.data.frame(VarCorr(m))
   vc_named <- setNames(vc$vcov, vc$grp)
   
   sigma2_G   <- vc_named["genotipo"]
   sigma2_GxA <- vc_named["genotipo:ano"]
   sigma2_e   <- vc_named["Residual"]
   
-  # herdabilidade na base da média
+  # heritability on the mean basis
   sigma2_P <- sigma2_G + sigma2_GxA / n_anos + sigma2_e / (n_anos * n_blocos)
   H2       <- sigma2_G / sigma2_P
   
-  # acurácia
+  # accuracy
   acuracia <- sqrt(H2)
   
-  # correlação genotípica entre anos
+  # genotypic correlation between years
   rGA <- sigma2_G / (sigma2_G + sigma2_GxA)
   
-  # CVg e CVe
+  # CVg and CVe
   media_var <- mean(data[[var]], na.rm = TRUE)
   CVg       <- sqrt(sigma2_G)  / media_var * 100
   CVe       <- sqrt(sigma2_e)  / media_var * 100
   
-  # diagnóstico
+  # diagnostic
   sing <- isSingular(m)
   bnd  <- any(vc$vcov <= 1e-6)
   
@@ -114,11 +116,11 @@ extrair_reml <- function(var, data) {
   )
 }
 
-# ── 1. REML para todas as variáveis ───────────────────────────────────────────
-cat("\n── Estimativas REML ──\n\n")
+# ── 1. REML for all variables ───────────────────────────────────────────
+cat("\n── REML estimates ──\n\n")
 
 reml_results <- map_dfr(vars_resp, function(v) {
-  cat("Variável:", v, "\n")
+  cat("Variable:", v, "\n")
   res <- extrair_reml(v, dados)
   cat("  Singular:", res$singular,
       "| Boundary:", res$boundary,
@@ -130,9 +132,9 @@ reml_results <- map_dfr(vars_resp, function(v) {
 print(reml_results |> select(variavel, sigma2_G, sigma2_GxA, sigma2_e,
                              H2, rGA, singular, boundary))
 
-# ── 2. Tabela comparativa REML vs Bayes ───────────────────────────────────────
+# ── 2. Comparative table REML vs Bayes ───────────────────────────────────────
 
-# formatar bayes para comparação
+# format Bayes for comparison
 bayes_comp <- params_bayes |>
   select(variavel,
          sigma2_G   = sigma2_G_med,
@@ -150,7 +152,7 @@ bayes_comp <- params_bayes |>
          razao_CVg_CVe) |>
   mutate(metodo = "Bayes", singular = FALSE, boundary = FALSE)
 
-# juntar
+# join
 comp_full <- bind_rows(
   reml_results |>
     mutate(H2_q025 = NA, H2_q975 = NA,
@@ -159,7 +161,7 @@ comp_full <- bind_rows(
 ) |>
   arrange(variavel, metodo)
 
-# tabela resumo lado a lado
+# side-by-side summary table
 comp_wide <- comp_full |>
   select(variavel, metodo, sigma2_G, sigma2_GxA, sigma2_e,
          H2, H2_q025, H2_q975, rGA, rGA_q025, rGA_q975,
@@ -173,28 +175,28 @@ comp_wide <- comp_full |>
     names_glue  = "{.value}__{metodo}"
   )
 
-cat("\n── Comparação REML vs Bayes ──\n")
+cat("\n── Comparison REML vs Bayes ──\n")
 print(comp_wide |> select(variavel,
                           H2__REML, H2__Bayes, H2_q025__Bayes, H2_q975__Bayes,
                           rGA__REML, rGA__Bayes, rGA_q025__Bayes, rGA_q975__Bayes,
                           boundary__REML))
 
-# ── 3. visualizações ───────────────────────────────────────────────────────────
+# ── 3. visualizations ───────────────────────────────────────────────────────────
 
-# labels para o eixo x
+# x-axis labels
 var_labels <- c(
-  per_grao  = "% grão",
-  per_palha = "% palha",
-  mcm_mgb   = "MCM/MGB",
-  mcm_saca  = "MCM/saca",
-  vcm_saca  = "VCM/saca",
-  vcm_mcm   = "VCM/MCM"
+  per_grao  = "% grain",
+  per_palha = "% husk",
+  mcm_mgb   = "FWM/GW",
+  mcm_saca  = "FWM/bag",
+  vcm_saca  = "FVol/bag",
+  vcm_mcm   = "FVol/FWM"
 )
 
-# paleta
+# palette
 cores <- c("REML" = "#D85A30", "Bayes" = "#185FA5")
 
-# 3a. comparação H²
+# 3a. H² comparison
 df_h2 <- comp_full |>
   filter(!is.na(H2)) |>
   mutate(
@@ -220,11 +222,11 @@ p_h2 <- ggplot(df_h2, aes(x = variavel_lab, y = H2, colour = metodo,
   scale_y_continuous(limits = c(0, 1), labels = scales::percent_format()) +
   labs(
     x = NULL,
-    y = "herdabilidade (H²)",
-    colour = "método",
-    shape  = "método",
-    title  = "Herdabilidade — REML vs Bayes",
-    subtitle = "× indica estimativa de fronteira (boundary) no REML"
+    y = "Heritability (H²)",
+    colour = "Method",
+    shape  = "Method",
+    title  = "Heritability — REML vs Bayes",
+    subtitle = "× indicates boundary estimate in REML"
   ) +
   theme_minimal(base_size = 11) +
   theme(
@@ -234,7 +236,7 @@ p_h2 <- ggplot(df_h2, aes(x = variavel_lab, y = H2, colour = metodo,
     axis.text.x        = element_text(angle = 30, hjust = 1)
   )
 
-# 3b. comparação rGA
+# 3b. rGA comparison
 p_rga <- ggplot(df_h2, aes(x = variavel_lab, y = rGA, colour = metodo,
                            shape = metodo)) +
   geom_errorbar(
@@ -250,11 +252,11 @@ p_rga <- ggplot(df_h2, aes(x = variavel_lab, y = rGA, colour = metodo,
   scale_y_continuous(limits = c(0, 1)) +
   labs(
     x = NULL,
-    y = "correlação genotípica entre anos (rGA)",
-    colour = "método",
-    shape  = "método",
-    title  = "Correlação genotípica entre anos — REML vs Bayes",
-    subtitle = "linha tracejada = rGA = 0.5"
+    y = "Genotypic correlation between years (rGA)",
+    colour = "Method",
+    shape  = "Method",
+    title  = "Genotypic correlation between years — REML vs Bayes",
+    subtitle = "dashed line = rGA = 0.5"
   ) +
   theme_minimal(base_size = 11) +
   theme(
@@ -264,7 +266,7 @@ p_rga <- ggplot(df_h2, aes(x = variavel_lab, y = rGA, colour = metodo,
     axis.text.x        = element_text(angle = 30, hjust = 1)
   )
 
-# 3c. decomposição da variância — REML vs Bayes lado a lado
+# 3c. variance decomposition — REML vs Bayes side by side
 df_vc <- comp_full |>
   select(variavel, metodo, sigma2_G, sigma2_GxA, sigma2_e) |>
   pivot_longer(
@@ -277,7 +279,7 @@ df_vc <- comp_full |>
     prop = variancia / sum(variancia, na.rm = TRUE),
     componente = factor(componente,
                         levels = c("sigma2_G", "sigma2_GxA", "sigma2_e"),
-                        labels = c("Genótipo", "G×A", "Resíduo")),
+                        labels = c("Genotype", "G×A", "Residual")),
     variavel_lab = var_labels[variavel],
     metodo_lab   = paste0(var_labels[variavel], "\n(", metodo, ")")
   ) |>
@@ -288,18 +290,18 @@ p_vc <- ggplot(df_vc |> filter(!is.na(prop)),
   geom_col(width = 0.7) +
   scale_fill_manual(
     values = c(
-      "Genótipo" = "#185FA5",
+      "Genotype" = "#185FA5",
       "G×A"      = "#D85A30",
-      "Resíduo"  = "#B4B2A9"
+      "Residual" = "#B4B2A9"
     )
   ) +
   scale_y_continuous(labels = scales::percent_format()) +
   facet_wrap(~variavel_lab, scales = "free_x", nrow = 1) +
   labs(
     x = NULL,
-    y = "proporção da variância total",
-    fill = "componente",
-    title = "Decomposição da variância — REML vs Bayes"
+    y = "Proportion of total variance",
+    fill = "Component",
+    title = "Variance decomposition — REML vs Bayes"
   ) +
   theme_minimal(base_size = 10) +
   theme(
@@ -310,7 +312,7 @@ p_vc <- ggplot(df_vc |> filter(!is.na(prop)),
     strip.text         = element_text(size = 8)
   )
 
-# salvar figuras
+# save figures
 ggsave(paste0(path_fig, "03b_comparacao_h2.png"),
        p_h2,  width = 8, height = 5, dpi = 300)
 
@@ -320,12 +322,12 @@ ggsave(paste0(path_fig, "03b_comparacao_rga.png"),
 ggsave(paste0(path_fig, "03b_varcomp_reml_vs_bayes.png"),
        p_vc,  width = 14, height = 5, dpi = 300)
 
-# ── 4. salvar tabelas ──────────────────────────────────────────────────────────
+# ── 4. save tables ──────────────────────────────────────────────────────────
 write_xlsx(
   list(
-    reml_parametros    = reml_results,
-    comparacao_wide    = comp_wide,
-    comparacao_long    = comp_full |>
+    reml_parameters      = reml_results,
+    comparison_wide      = comp_wide,
+    comparison_long      = comp_full |>
       select(variavel, metodo, sigma2_G, sigma2_GxA, sigma2_e,
              H2, H2_q025, H2_q975, acuracia,
              rGA, rGA_q025, rGA_q975,
@@ -334,4 +336,4 @@ write_xlsx(
   paste0(path_tbl, "03b_reml_vs_bayes.xlsx")
 )
 
-cat("\nConcluído. Resultados salvos em outputs/tables/03b_reml_vs_bayes.xlsx\n")
+cat("\nFinished. Results saved in outputs/tables/03b_reml_vs_bayes.xlsx\n")
