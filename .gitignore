@@ -1,0 +1,7 @@
+dados.xlsx 
+dados_clean.rds 
+modelos_bayes.rds 
+modelos_finais.rds 
+.RData 
+.Rhistory 
+outputs/ 
