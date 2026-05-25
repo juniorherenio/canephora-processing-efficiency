@@ -1,8 +1,10 @@
 # 01_load_explore.R
-# Carregamento, verificação de estrutura e exploração descritiva
-# Saídas: data/dados_clean.rds, outputs/tables/descritivas.csv
+# Loading, structure verification, and descriptive exploration
+# Outputs: data/dados_clean.rds, outputs/tables/descritivas.csv
+# Part of: Gonçalves Júnior et al. (2026), Biology (MDPI)
+# Repository: https://github.com/juniorherenio/canephora-processing-efficiency
 
-# ── pacotes ────────────────────────────────────────────────────────────────────
+# ── packages ────────────────────────────────────────────────────────────────────
 library(readxl)
 library(dplyr)
 library(tidyr)
@@ -18,7 +20,7 @@ path_out_rds  <- "data/dados_clean.rds"
 path_out_fig  <- "outputs/figures/"
 path_out_tbl  <- "outputs/tables/"
 
-# ── 1. leitura ─────────────────────────────────────────────────────────────────
+# ── 1. reading ─────────────────────────────────────────────────────────────────
 raw <- read_excel(
   path_data,
   col_types = c("text", "text", "text", "text",
@@ -26,7 +28,7 @@ raw <- read_excel(
                 "numeric", "numeric", "numeric")
 )
 
-# ── 2. limpeza e tipagem ───────────────────────────────────────────────────────
+# ── 2. cleaning and typing ───────────────────────────────────────────────────────
 dados <- raw |>
   janitor::clean_names() |>
   mutate(
@@ -40,44 +42,44 @@ dados <- raw |>
     ) |> as.factor()
   )
 
-# ── 3. verificação de balanceamento ───────────────────────────────────────────
-cat("\n── Balanceamento genótipo × ano ──\n")
+# ── 3. balancing verification ───────────────────────────────────────────
+cat("\n── Genotype × Year balance ──\n")
 print(table(dados$genotipo, dados$ano))
 
-cat("\n── Observações por grupo ──\n")
+cat("\n── Observations by group ──\n")
 dados |>
   count(grupo, ano) |>
   print()
 
-# ── 4. estatísticas descritivas ───────────────────────────────────────────────
+# ── 4. descriptive statistics ───────────────────────────────────────────────
 vars_resp <- c("per_grao", "per_palha", "mcm_mgb", "mcm_saca", "vcm_saca", "vcm_mcm")
 
-cat("\n── Descritivas globais ──\n")
+cat("\n── Global descriptives ──\n")
 dados |>
   select(all_of(vars_resp)) |>
   skim() |>
   print()
 
-cat("\n── Descritivas por ano ──\n")
+cat("\n── Descriptives by year ──\n")
 desc_ano <- dados |>
   group_by(ano) |>
   summarise(
     across(
       all_of(vars_resp),
       list(
-        media = \(x) mean(x, na.rm = TRUE),
-        dp    = \(x) sd(x, na.rm = TRUE),
-        min   = \(x) min(x, na.rm = TRUE),
-        max   = \(x) max(x, na.rm = TRUE)
+        mean = \(x) mean(x, na.rm = TRUE),
+        sd   = \(x) sd(x, na.rm = TRUE),
+        min  = \(x) min(x, na.rm = TRUE),
+        max  = \(x) max(x, na.rm = TRUE)
       ),
       .names = "{.col}__{.fn}"
     )
   )
 print(desc_ano)
 
-# ── 5. correlação entre anos por variável ─────────────────────────────────────
-# Média por genótipo × ano → wide → cor entre anos
-# Isso indica quão consistente é a classificação dos genótipos entre os dois anos
+# ── 5. correlation between years by variable ─────────────────────────────────────
+# Mean per genotype × year → wide → correlation between years
+# This indicates how consistent the genotype ranking is between the two years
 cor_anos <- dados |>
   group_by(genotipo, ano) |>
   summarise(
@@ -90,7 +92,7 @@ cor_anos <- dados |>
     names_glue  = "{.value}__{ano}"
   )
 
-cat("\n── Correlação de Pearson entre anos (média por genótipo) ──\n")
+cat("\n── Pearson correlation between years (mean per genotype) ──\n")
 cor_tab <- sapply(vars_resp, function(v) {
   x <- cor_anos[[paste0(v, "__2023")]]
   y <- cor_anos[[paste0(v, "__2024")]]
@@ -98,17 +100,28 @@ cor_tab <- sapply(vars_resp, function(v) {
 })
 print(round(cor_tab, 3))
 
-# ── 6. plots exploratórios ────────────────────────────────────────────────────
+# ── 6. exploratory plots ────────────────────────────────────────────────────
 
-# 6a. Distribuição por ano (densidade + boxplot)
+# 6a. Distribution by year (density + boxplot)
+# Defining display labels for variables
+var_labels <- c(
+  per_grao  = "Grain proportion (% grain)",
+  per_palha = "Husk proportion (% husk)",
+  mcm_mgb   = "Fruit fresh mass per grain mass (FWM/GW)",
+  mcm_saca  = "Fruit fresh mass per bag (FWM/bag)",
+  vcm_saca  = "Fruit volume per bag (FVol/bag)",
+  vcm_mcm   = "Fruit volume-to-fresh mass ratio (FVol/FWM)"
+)
+
 p_dist <- dados |>
   pivot_longer(all_of(vars_resp), names_to = "variavel", values_to = "valor") |>
+  mutate(variavel = recode(variavel, !!!var_labels)) |>
   ggplot(aes(x = valor, fill = ano, colour = ano)) +
   geom_density(alpha = 0.35, linewidth = 0.4) +
   facet_wrap(~variavel, scales = "free", ncol = 3) +
   scale_fill_manual(values  = c("2023" = "#378ADD", "2024" = "#D85A30")) +
   scale_colour_manual(values = c("2023" = "#185FA5", "2024" = "#993C1D")) +
-  labs(x = NULL, y = "densidade", fill = "ano", colour = "ano") +
+  labs(x = NULL, y = "Density", fill = "Year", colour = "Year") +
   theme_minimal(base_size = 11) +
   theme(
     strip.text  = element_text(size = 9, face = "bold"),
@@ -119,7 +132,7 @@ p_dist <- dados |>
 ggsave(paste0(path_out_fig, "01a_distribuicao_por_ano.png"),
        p_dist, width = 10, height = 7, dpi = 300)
 
-# 6b. Média por genótipo em 2023 vs. 2024 (scatter de consistência)
+# 6b. Mean per genotype in 2023 vs. 2024 (consistency scatter plot)
 p_scatter <- cor_anos |>
   select(genotipo, starts_with("mcm_saca")) |>
   ggplot(aes(x = mcm_saca__2023, y = mcm_saca__2024,
@@ -130,9 +143,9 @@ p_scatter <- cor_anos |>
   ggrepel::geom_text_repel(size = 2.8, colour = "gray40",
                            max.overlaps = 15) +
   labs(
-    x = "MCM/saca 2023 (kg)",
-    y = "MCM/saca 2024 (kg)",
-    title = "Consistência do ranking entre anos — MCM/saca"
+    x = "FWM/bag 2023 (kg)",
+    y = "FWM/bag 2024 (kg)",
+    title = "Genotype ranking consistency between years — FWM/bag"
   ) +
   theme_minimal(base_size = 11) +
   theme(panel.grid.minor = element_blank())
@@ -140,25 +153,25 @@ p_scatter <- cor_anos |>
 ggsave(paste0(path_out_fig, "01b_scatter_2023_2024_mcm_saca.png"),
        p_scatter, width = 7, height = 6, dpi = 300)
 
-# ── 7. salvar objeto limpo ────────────────────────────────────────────────────
+# ── 7. saving cleaned object ────────────────────────────────────────────────────
 saveRDS(dados, path_out_rds)
-cat("\nDados salvos em", path_out_rds, "\n")
-cat("Dimensões:", nrow(dados), "×", ncol(dados), "\n")
+cat("\nData saved in", path_out_rds, "\n")
+cat("Dimensions:", nrow(dados), "×", ncol(dados), "\n")
 
 
-# ── parcela permanente (genotipo × bloco — mesmo indivíduo nos dois anos) ──────
+# ── permanent plot (genotype × block — same individual in both years) ──────
 dados <- dados |>
   mutate(parcela = interaction(genotipo, block, drop = TRUE))
 
-# verificação: cada parcela deve ter exatamente 2 observações (uma por ano)
+# verification: each plot must have exactly 2 observations (one per year)
 check_parcela <- dados |>
   count(parcela) |>
   filter(n != 2)
 
 if (nrow(check_parcela) == 0) {
-  cat("\nParcela permanente OK — 144 parcelas × 2 anos\n")
+  cat("\nPermanent plot OK — 144 plots × 2 years\n")
 } else {
-  cat("\nATENÇÃO — parcelas com contagem irregular:\n")
+  cat("\nWARNING — plots with irregular count:\n")
   print(check_parcela)
 }
 
