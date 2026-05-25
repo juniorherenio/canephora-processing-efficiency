@@ -1,20 +1,22 @@
 # 02_model_selection_v2.R
-# Seleção de modelo com estrutura correta para melhoramento:
-#   Fixos:     Ano, Bloco
-#   Aleatórios: Genótipo, G×A (Genótipo:Ano), Parcela (Genótipo×Bloco)
+# Model selection with correct structure for breeding:
+#   Fixed:   Year, Block
+#   Random: Genotype, G×A (Genotype:Year), Plot (Genotype×Block)
 #
-# Testes:
-#   LRT1 — necessidade de Parcela permanente
-#   LRT2 — necessidade de G×A
-#   LRT3 — necessidade de Genótipo
-#   Diagnóstico de boundary por variável
+# Tests:
+#   LRT1 — need for permanent Plot
+#   LRT2 — need for G×A
+#   LRT3 — need for Genotype
+#   Boundary diagnostic by variable
 #
-# Saídas:
+# Outputs:
 #   outputs/tables/02v2_model_selection.csv
 #   outputs/figures/02v2_boundary_summary.png
 #   outputs/figures/02v2_varcomp_profile.png
+# Part of: Gonçalves Júnior et al. (2026), Biology (MDPI)
+# Repository: https://github.com/juniorherenio/canephora-processing-efficiency
 
-# ── pacotes ────────────────────────────────────────────────────────────────────
+# ── packages ────────────────────────────────────────────────────────────────────
 library(dplyr)
 library(tidyr)
 library(purrr)
@@ -23,7 +25,7 @@ library(tibble)
 library(ggplot2)
 library(patchwork)
 
-# ── dados e paths ──────────────────────────────────────────────────────────────
+# ── data and paths ──────────────────────────────────────────────────────────────
 dados <- readRDS("data/dados_clean.rds")
 
 path_out_fig <- "outputs/figures/"
@@ -31,11 +33,11 @@ path_out_tbl <- "outputs/tables/"
 
 vars_resp <- c("per_grao", "per_palha", "mcm_mgb", "mcm_saca", "vcm_saca", "vcm_mcm")
 
-# ── controle do otimizador ─────────────────────────────────────────────────────
+# ── optimizer control ─────────────────────────────────────────────────────
 ctrl_reml <- lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
 ctrl_ml   <- lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
 
-# ── funções auxiliares ─────────────────────────────────────────────────────────
+# ── auxiliary functions ─────────────────────────────────────────────────────────
 
 fit_lmer_safe <- function(formula, data, reml) {
   tryCatch(
@@ -65,8 +67,8 @@ is_boundary <- function(model) {
 }
 
 lrt_ml <- function(m_full, m_red) {
-  # ambos ajustados com ML (REML = FALSE) — correto para LRT de efeitos fixos
-  # e para comparação de estruturas aleatórias aninhadas
+  # both fitted with ML (REML = FALSE) — correct for fixed effects LRT
+  # and for comparison of nested random structures
   if (is.null(m_full) || is.null(m_red)) {
     return(tibble(delta_aic = NA_real_, delta_bic = NA_real_, pval = NA_real_))
   }
@@ -78,11 +80,11 @@ lrt_ml <- function(m_full, m_red) {
   )
 }
 
-# ── modelos candidatos ─────────────────────────────────────────────────────────
-# M_full : modelo completo — todos os componentes aleatórios
-# M_noPP : sem parcela permanente
-# M_noGxA: sem interação G×A
-# M_noG  : sem genótipo (apenas para referência — não faz sentido biológico)
+# ── candidate models ─────────────────────────────────────────────────────────
+# M_full : full model — all random components
+# M_noPP : without permanent plot
+# M_noGxA: without G×A interaction
+# M_noG  : without genotype (reference only — biologically meaningless)
 
 build_formulas <- function(var) {
   list(
@@ -97,72 +99,72 @@ build_formulas <- function(var) {
   )
 }
 
-# ── loop principal ─────────────────────────────────────────────────────────────
-cat("\n── Seleção de modelo v2 (genótipo aleatório) ──\n\n")
+# ── main loop ─────────────────────────────────────────────────────────────
+cat("\n── Model selection v2 (random genotype) ──\n\n")
 
 results <- map(vars_resp, function(v) {
   
   cat("────────────────────────────\n")
-  cat("Variável:", v, "\n")
+  cat("Variable:", v, "\n")
   
   fmls <- build_formulas(v)
   
-  # ajuste com REML = TRUE — para estimativa final dos componentes
+  # fit with REML = TRUE — for final component estimation
   m_full_reml <- fit_lmer_safe(fmls$full,  dados, reml = TRUE)
   
-  # ajuste com REML = FALSE — para LRT
+  # fit with REML = FALSE — for LRT
   m_full_ml  <- fit_lmer_safe(fmls$full,  dados, reml = FALSE)
   m_noPP_ml  <- fit_lmer_safe(fmls$noPP,  dados, reml = FALSE)
   m_noGxA_ml <- fit_lmer_safe(fmls$noGxA, dados, reml = FALSE)
   m_noG_ml   <- fit_lmer_safe(fmls$noG,   dados, reml = FALSE)
   
-  # ── singularidade e boundary
+  # ── singularity and boundary
   sing    <- isTRUE(isSingular(m_full_reml))
   bnd     <- is_boundary(m_full_reml)
   cat("  Singular:", sing, "| Boundary:", bnd, "\n")
   
-  # ── componentes de variância (REML)
+  # ── variance components (REML)
   vc <- extract_vc_df(m_full_reml)
-  cat("  Componentes de variância (REML):\n")
+  cat("  Variance components (REML):\n")
   print(vc)
   
   # ── LRTs (ML)
-  lrt_pp  <- lrt_ml(m_full_ml, m_noPP_ml)   # testa parcela permanente
-  lrt_gxa <- lrt_ml(m_full_ml, m_noGxA_ml)  # testa G×A
-  lrt_g   <- lrt_ml(m_full_ml, m_noG_ml)    # testa genótipo
+  lrt_pp  <- lrt_ml(m_full_ml, m_noPP_ml)   # tests permanent plot
+  lrt_gxa <- lrt_ml(m_full_ml, m_noGxA_ml)  # tests G×A
+  lrt_g   <- lrt_ml(m_full_ml, m_noG_ml)    # tests genotype
   
-  cat("  LRT Parcela permanente — p:", round(lrt_pp$pval,  6),
+  cat("  LRT permanent Plot — p:", round(lrt_pp$pval,  6),
       "| ΔAIC:", round(lrt_pp$delta_aic,  2), "\n")
-  cat("  LRT G×A               — p:", round(lrt_gxa$pval, 6),
+  cat("  LRT G×A            — p:", round(lrt_gxa$pval, 6),
       "| ΔAIC:", round(lrt_gxa$delta_aic, 2), "\n")
-  cat("  LRT Genótipo          — p:", round(lrt_g$pval,   6),
+  cat("  LRT Genotype       — p:", round(lrt_g$pval,   6),
       "| ΔAIC:", round(lrt_g$delta_aic,   2), "\n\n")
   
-  # ── proporção de cada componente na variância total
+  # ── proportion of each component in total variance
   vc_named <- vc |> tibble::deframe()
   v_total  <- sum(vc_named, na.rm = TRUE)
   
   tibble(
-    variavel          = v,
-    singular          = sing,
-    boundary          = bnd,
-    # componentes (REML)
-    sigma2_G          = vc_named["genotipo"],
-    sigma2_GxA        = vc_named["genotipo:ano"],
-    sigma2_PP         = vc_named["parcela"],
-    sigma2_e          = vc_named["Residual"],
-    # proporções
-    prop_G            = sigma2_G   / v_total,
-    prop_GxA          = sigma2_GxA / v_total,
-    prop_PP           = sigma2_PP  / v_total,
-    prop_e            = sigma2_e   / v_total,
+    variavel        = v,
+    singular        = sing,
+    boundary        = bnd,
+    # components (REML)
+    sigma2_G        = vc_named["genotipo"],
+    sigma2_GxA      = vc_named["genotipo:ano"],
+    sigma2_PP       = vc_named["parcela"],
+    sigma2_e        = vc_named["Residual"],
+    # proportions
+    prop_G          = sigma2_G   / v_total,
+    prop_GxA        = sigma2_GxA / v_total,
+    prop_PP         = sigma2_PP  / v_total,
+    prop_e          = sigma2_e   / v_total,
     # LRTs
-    lrt_pp_p          = lrt_pp$pval,
-    lrt_pp_daic       = lrt_pp$delta_aic,
-    lrt_gxa_p         = lrt_gxa$pval,
-    lrt_gxa_daic      = lrt_gxa$delta_aic,
-    lrt_g_p           = lrt_g$pval,
-    lrt_g_daic        = lrt_g$delta_aic
+    lrt_pp_p        = lrt_pp$pval,
+    lrt_pp_daic     = lrt_pp$delta_aic,
+    lrt_gxa_p       = lrt_gxa$pval,
+    lrt_gxa_daic    = lrt_gxa$delta_aic,
+    lrt_g_p         = lrt_g$pval,
+    lrt_g_daic      = lrt_g$delta_aic
   )
   
 }) |> list_rbind()
@@ -174,31 +176,42 @@ print(results |> select(variavel, singular, boundary,
 write.csv(results, paste0(path_out_tbl, "02v2_model_selection.csv"),
           row.names = FALSE)
 
-# ── visualização dos componentes de variância ──────────────────────────────────
+# ── variance components visualization ──────────────────────────────────
+# Variable display labels for plotting
+var_labels <- c(
+  per_grao  = "Grain proportion (% grain)",
+  per_palha = "Husk proportion (% husk)",
+  mcm_mgb   = "FWM/GW",
+  mcm_saca  = "FWM/bag",
+  vcm_saca  = "FVol/bag",
+  vcm_mcm   = "FVol/FWM"
+)
+
 vc_long <- results |>
   select(variavel, prop_G, prop_GxA, prop_PP, prop_e) |>
   pivot_longer(-variavel, names_to = "componente", values_to = "proporcao") |>
   mutate(
     componente = factor(componente,
                         levels = c("prop_G", "prop_GxA", "prop_PP", "prop_e"),
-                        labels = c("Genótipo", "G×A", "Parcela", "Resíduo"))
+                        labels = c("Genotype", "G×A", "Plot", "Residual")),
+    variavel = recode(variavel, !!!var_labels)
   )
 
 p_vc <- ggplot(vc_long, aes(x = variavel, y = proporcao, fill = componente)) +
   geom_col(width = 0.7) +
   scale_fill_manual(
     values = c(
-      "Genótipo" = "#185FA5",
+      "Genotype" = "#185FA5",
       "G×A"      = "#D85A30",
-      "Parcela"  = "#1D9E75",
-      "Resíduo"  = "#B4B2A9"
+      "Plot"     = "#1D9E75",
+      "Residual" = "#B4B2A9"
     )
   ) +
   scale_y_continuous(labels = scales::percent_format()) +
   labs(
-    x = NULL, y = "proporção da variância total",
-    fill = "componente",
-    title = "Decomposição da variância — modelo completo (REML)"
+    x = NULL, y = "Proportion of total variance",
+    fill = "Component",
+    title = "Variance decomposition — full model (REML)"
   ) +
   theme_minimal(base_size = 11) +
   theme(
@@ -211,15 +224,15 @@ p_vc <- ggplot(vc_long, aes(x = variavel, y = proporcao, fill = componente)) +
 ggsave(paste0(path_out_fig, "02v2_varcomp_stacked.png"),
        p_vc, width = 9, height = 6, dpi = 300)
 
-# ── tabela resumo de boundary para decisão frequentista vs bayes ───────────────
-cat("\n── Resumo para decisão frequentista vs. bayesiano ──\n")
+# ── boundary summary table for frequentist vs. bayesian decision ───────────────
+cat("\n── Summary for frequentist vs. Bayesian decision ──\n")
 results |>
   select(variavel, singular, boundary, lrt_pp_p, lrt_gxa_p, lrt_g_p) |>
   mutate(
-    recomendacao = case_when(
-      boundary ~ "Bayesiano",
+    recommendation = case_when(
+      boundary ~ "Bayesian",
       !boundary & !singular ~ "LMM-REML",
-      TRUE ~ "Verificar"
+      TRUE ~ "Verify"
     )
   ) |>
   print()
