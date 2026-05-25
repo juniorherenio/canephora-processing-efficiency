@@ -1,19 +1,21 @@
 # 03c_test_ano_block.R
-# Testa se a interação ano:block (anos aninhado a bloco) melhora o ajuste
-# do modelo para cada variável resposta
+# Tests whether the year:block interaction (years nested within block) 
+# improves the model fit for each response trait
 #
-# Referência: modelo do artigo de Theobroma grandiflorum com medidas repetidas
-# (Years:Replicates como efeito fixo)
+# Reference: model from the Theobroma grandiflorum paper with repeated 
+# measures (Years:Replicates as a fixed effect)
 #
-# Comparação via LRT com ML:
+# Comparison via LRT with ML:
 #   M1: y ~ ano + block + (1|genotipo) + (1|genotipo:ano)
 #   M2: y ~ ano + block + ano:block + (1|genotipo) + (1|genotipo:ano)
 #
-# Saídas:
+# Outputs:
 #   outputs/tables/03c_test_ano_block.xlsx
 #   outputs/figures/03c_aic_comparacao.png
+# Part of: Gonçalves Júnior et al. (2026), Biology (MDPI)
+# Repository: https://github.com/juniorherenio/canephora-processing-efficiency
 
-# ── pacotes ────────────────────────────────────────────────────────────────────
+# ── packages ────────────────────────────────────────────────────────────────────
 library(dplyr)
 library(tidyr)
 library(purrr)
@@ -23,7 +25,7 @@ library(lmerTest)
 library(ggplot2)
 library(writexl)
 
-# ── dados e paths ──────────────────────────────────────────────────────────────
+# ── data and paths ──────────────────────────────────────────────────────────────
 dados    <- readRDS("data/dados_clean.rds")
 path_fig <- "outputs/figures/"
 path_tbl <- "outputs/tables/"
@@ -33,21 +35,21 @@ vars_resp <- c("per_grao", "per_palha", "mcm_mgb",
 
 ctrl_ml <- lmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
 
-# ── labels para os plots ───────────────────────────────────────────────────────
+# ── labels for plots ───────────────────────────────────────────────────────
 var_labels <- c(
-  per_grao  = "% grão",
-  per_palha = "% palha",
-  mcm_mgb   = "MCM/MGB",
-  mcm_saca  = "MCM/saca",
-  vcm_saca  = "VCM/saca",
-  vcm_mcm   = "VCM/MCM"
+  per_grao  = "% grain",
+  per_palha = "% husk",
+  mcm_mgb   = "FWM/GW",
+  mcm_saca  = "FWM/bag",
+  vcm_saca  = "FVol/bag",
+  vcm_mcm   = "FVol/FWM"
 )
 
-# ── função de teste ────────────────────────────────────────────────────────────
+# ── test function ────────────────────────────────────────────────────────────
 testar_ano_block <- function(var, data) {
   
   cat("────────────────────────────\n")
-  cat("Variável:", var, "\n")
+  cat("Variable:", var, "\n")
   
   f_m1 <- as.formula(paste(
     var, "~ ano + block + (1|genotipo) + (1|genotipo:ano)"
@@ -56,7 +58,7 @@ testar_ano_block <- function(var, data) {
     var, "~ ano + block + ano:block + (1|genotipo) + (1|genotipo:ano)"
   ))
   
-  # ajuste com ML para LRT correto de efeitos fixos
+  # fitting with ML for correct fixed effects LRT
   m1 <- tryCatch(
     lmer(f_m1, data = data, REML = FALSE, control = ctrl_ml),
     error   = function(e) NULL,
@@ -74,14 +76,14 @@ testar_ano_block <- function(var, data) {
   )
   
   if (is.null(m1) || is.null(m2)) {
-    cat("  ERRO — modelo não convergiu\n")
+    cat("  ERROR — model failed to converge\n")
     return(tibble(
-      variavel      = var,
-      aic_m1        = NA, bic_m1 = NA, loglik_m1 = NA,
-      aic_m2        = NA, bic_m2 = NA, loglik_m2 = NA,
-      delta_aic     = NA, delta_bic = NA,
-      lrt_stat      = NA, lrt_df = NA, lrt_pval = NA,
-      ano_block_sig = NA, modelo_preferido = NA
+      variavel       = var,
+      aic_m1         = NA, bic_m1 = NA, loglik_m1 = NA,
+      aic_m2         = NA, bic_m2 = NA, loglik_m2 = NA,
+      delta_aic      = NA, delta_bic = NA,
+      lrt_stat       = NA, lrt_df = NA, lrt_pval = NA,
+      ano_block_sig  = NA, modelo_preferido = NA
     ))
   }
   
@@ -101,15 +103,15 @@ testar_ano_block <- function(var, data) {
   cat("  LRT χ²:", round(lrt_stat, 3),
       "| df:", lrt_df,
       "| p:", round(lrt_pval, 4), "\n")
-  cat("  ano:block significativo:", sig, "\n\n")
+  cat("  year:block significant:", sig, "\n\n")
   
-  # coeficientes do termo ano:block no M2
+  # coefficients of the year:block term in M2
   coef_m2 <- summary(m2)$coefficients
   coef_ab <- coef_m2[grep("ano.*block|block.*ano", rownames(coef_m2)), ,
                      drop = FALSE]
   
   if (nrow(coef_ab) > 0) {
-    cat("  Coeficientes ano:block:\n")
+    cat("  Coefficients year:block:\n")
     print(round(coef_ab, 4))
     cat("\n")
   }
@@ -129,22 +131,22 @@ testar_ano_block <- function(var, data) {
     lrt_pval         = lrt_pval,
     ano_block_sig    = sig,
     modelo_preferido = if_else(sig & delta_aic < -2,
-                               "M2 (com ano:block)",
-                               "M1 (sem ano:block)")
+                               "M2 (with year:block)",
+                               "M1 (without year:block)")
   )
 }
 
-# ── loop principal ─────────────────────────────────────────────────────────────
-cat("\n── Teste ano:block ──\n\n")
+# ── main loop ─────────────────────────────────────────────────────────────
+cat("\n── Year:block test ──\n\n")
 
 resultados <- map_dfr(vars_resp, testar_ano_block, data = dados)
 
-cat("── Resumo ──\n")
+cat("── Summary ──\n")
 print(resultados |>
         select(variavel, delta_aic, delta_bic,
                lrt_pval, ano_block_sig, modelo_preferido))
 
-# ── visualização ───────────────────────────────────────────────────────────────
+# ── visualization ───────────────────────────────────────────────────────────────
 
 df_plot <- resultados |>
   mutate(
@@ -165,18 +167,18 @@ p_aic <- ggplot(df_plot, aes(x = variavel_lab, y = delta_aic,
             size = 3.2, colour = "gray20") +
   scale_fill_manual(
     values = c("TRUE" = "#185FA5", "FALSE" = "#B4B2A9"),
-    labels = c("TRUE" = "significativo (p < 0.05)",
-               "FALSE" = "não significativo"),
-    name   = "ano:block"
+    labels = c("TRUE" = "significant (p < 0.05)",
+               "FALSE" = "not significant"),
+    name   = "year:block"
   ) +
   scale_y_continuous(
-    name = "ΔAIC (M2 com ano:block − M1 sem ano:block)",
+    name = "ΔAIC (M2 with year:block − M1 without year:block)",
     breaks = scales::pretty_breaks(6)
   ) +
   labs(
     x        = NULL,
-    title    = "Teste do efeito ano:block na estrutura fixa do modelo",
-    subtitle = "ΔAIC negativo indica melhora com inclusão de ano:block\nlinha tracejada = ΔAIC = −2 (limiar convencional)"
+    title    = "Test of year:block effect on model fixed structure",
+    subtitle = "Negative ΔAIC indicates improvement with year:block inclusion\ndashed line = ΔAIC = −2 (conventional threshold)"
   ) +
   theme_minimal(base_size = 11) +
   theme(
@@ -189,10 +191,10 @@ p_aic <- ggplot(df_plot, aes(x = variavel_lab, y = delta_aic,
 ggsave(paste0(path_fig, "03c_aic_comparacao.png"),
        p_aic, width = 8, height = 5, dpi = 300)
 
-# ── salvar ─────────────────────────────────────────────────────────────────────
+# ── save ─────────────────────────────────────────────────────────────────────
 write_xlsx(
   list(resultados = resultados),
   paste0(path_tbl, "03c_test_ano_block.xlsx")
 )
 
-cat("\nConcluído. Resultados em outputs/tables/03c_test_ano_block.xlsx\n")
+cat("\nFinished. Results in outputs/tables/03c_test_ano_block.xlsx\n")
