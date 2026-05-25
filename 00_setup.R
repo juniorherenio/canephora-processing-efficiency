@@ -1,19 +1,21 @@
 # 00_setup.R
-# Configuração global do projeto
-# Rodar uma vez para garantir que todos os pacotes estão instalados
+# Global project configuration
+# Run once to ensure all packages are installed
+# Part of: Gonçalves Júnior et al. (2026), Biology (MDPI)
+# Repository: https://github.com/juniorherenio/canephora-processing-efficiency
 
 pkgs <- c(
-  # dados
+  # data
   "readxl", "dplyr", "tidyr", "forcats", "stringr",
-  # visualização
+  # visualization
   "ggplot2", "patchwork", "ggdist", "scales", "ggrepel",
-  # modelos mistos (frequentista)
+  # mixed models (frequentist)
   "lme4", "lmerTest", "emmeans", "pbkrtest",
-  # bayesiano (reserva — instala mas não carrega ainda)
+  # bayesian (reserve — install but do not load yet)
   "brms", "bayesplot", "tidybayes",
-  # diagnóstico e parâmetros
+  # diagnostics and parameters
   "performance", "parameters", "see",
-  # multivariate / diversidade
+  # multivariate / diversity
   "factoextra", "cluster",
   # misc
   "skimr", "janitor", "purrr", "tibble", "broom.mixed"
@@ -22,13 +24,11 @@ pkgs <- c(
 to_install <- pkgs[!pkgs %in% rownames(installed.packages())]
 if (length(to_install) > 0) install.packages(to_install)
 
-# opções globais
+# global options
 options(
   scipen = 999,
   digits = 4,
   OutDec = "."
 )
 
-message("Setup concluído. Pacotes disponíveis: ", length(pkgs) - length(to_install), "/", length(pkgs))
-
-
+message("Setup completed. Packages available: ", length(pkgs) - length(to_install), "/", length(pkgs))
